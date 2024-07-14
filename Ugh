@@ -21,70 +21,6 @@ local Tabs = {
 local Options = Fluent.Options
 
 --functions
-function Manual()
-local toggleState = false
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Name = "Button"
-
-local button = Instance.new("TextButton")
-button.Text = "Manual Parry"
-button.BackgroundTransparency = 0
-button.BackgroundColor3 = Color3.new(1, 1, 1)
-button.Size = UDim2.new(0, 150, 0, 70)
-button.Parent = ScreenGui
-button.Position = UDim2.new(0, 100, 0, 100)
-
-local topBar = Instance.new("Frame")
-topBar.Size = UDim2.new(1, 0, 0, 15)
-topBar.BackgroundColor3 = Color3.new(0, 0, 0)
-topBar.Parent = button
-
-local originalColor = button.BackgroundColor3
-local grayColor = Color3.new(0.7, 0.7, 0.7)
-
-local dragging = false
-local offset = Vector2.new()
-local player = game.Players.LocalPlayer
-
-topBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        offset = button.Position - UDim2.new(0, input.Position.X, 0, input.Position.Y)
-        button.BackgroundColor3 = grayColor
-    end
-end)
-
-topBar.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local inputPosition = input.Position
-        local newPosition = UDim2.new(0, inputPosition.X, 0, inputPosition.Y) + offset
-        button.Position = newPosition
-    end
-end)
-
-topBar.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-        button.BackgroundColor3 = originalColor
-    end
-end)
-
-button.MouseButton1Click:Connect(function()
-    toggleState = not toggleState
-    button.Text = tostring(toggleState)
-    getgenv().Spam = toggleState
-    while getgenv().Spam do
---game.ReplicatedStorage.Remotes.ParryButtonPress:Fire()
-game:GetService("VirtualInputManager"):SendKeyEvent(true, "F" , false , game)
---Enum.KeyCode.F
-        wait(0.01)
-    end
-end)
-
-ScreenGui.Parent = player:FindFirstChild("PlayerGui")
-end
-
 -- ugh
 
 function SwordCrateManual()
@@ -124,14 +60,76 @@ local Mainy = Tabs.Main:AddSection("Parry")
 
 local Toggle = Mainy:AddToggle("Parry", {Title = "Toggle Auto Parry", Default = false })
 Toggle:OnChanged(function(state)
-        
+    local runService = game:GetService("RunService")
+    local players = game:GetService("Players")
+    local workspace = game:GetService("Workspace")
+    local vim = game:GetService("VirtualInputManager")
+    local ballFolder = workspace.Balls
+
+    local indicatorPart = Instance.new("Part")
+    indicatorPart.Size = Vector3.new(5, 5, 5)
+    indicatorPart.Anchored = true
+    indicatorPart.CanCollide = false
+    indicatorPart.Transparency = 1
+    indicatorPart.BrickColor = BrickColor.new("Bright red")
+    indicatorPart.Parent = workspace
+
+    local lastBallPressed, isKeyPressed = nil, false
+
+    local function calculatePredictionTime(ball, player)
+        local rootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            local relativePosition = ball.Position - rootPart.Position
+            local velocity = ball.Velocity + rootPart.Velocity 
+            local a = ball.Size.magnitude / 2
+            local b = relativePosition.magnitude
+            local c = math.sqrt(a * a + b * b)
+            return (c - a) / velocity.magnitude
+        end
+        return math.huge
+    end
+
+    local function checkProximityToPlayer(ball, player)
+        local predictionTime = calculatePredictionTime(ball, player)
+        local realBallAttribute = ball:GetAttribute("realBall")
+        local target = ball:GetAttribute("target")
+
+        local ballSpeedThreshold = math.max(0.4, 0.6 - ball.Velocity.magnitude * 0.01)
+        if predictionTime <= ballSpeedThreshold and realBallAttribute and target == player.Name and not isKeyPressed then
+            vim:SendKeyEvent(true, Enum.KeyCode.F, false, nil)
+            wait(0.005)
+            vim:SendKeyEvent(false, Enum.KeyCode.F, false, nil)
+            lastBallPressed = ball
+            isKeyPressed = true
+        elseif lastBallPressed == ball and (predictionTime > ballSpeedThreshold or not realBallAttribute or target ~= player.Name) then
+            isKeyPressed = false
+        end
+    end
+
+    local function checkBallsProximity()
+        local player = players.LocalPlayer
+        if player then
+            for _, ball in pairs(ballFolder:GetChildren()) do
+                checkProximityToPlayer(ball, player)
+            end
+        end
+    end
+
+    if state then
+        runService.Heartbeat:Connect(checkBallsProximity)
+    else
+        lastBallPressed = nil
+        isKeyPressed = false
+    end
         end
 end)
 
 Mainy:AddButton({
         Title = "Launch Spam Parry GUI",
-        Description = "litteraly says it",
-          
+        Description = "litteraly says it", Default = false })
+        Toggle:OnChanged(function(Value)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Atreus-Hub/Open-Source/main/manual%20spam"))()
+end)
         end
     })
     
